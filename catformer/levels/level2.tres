@@ -1,0 +1,41 @@
+[gd_resource type="LevelData" script_class="LevelData" format=3 uid="uid://c5y8k2m9f1n7p"]
+
+[ext_resource type="Script" path="res://LevelData.gd" id="1_leveldata"]
+[ext_resource type="Script" path="res://PlatformData.gd" id="2_platformdata"]
+
+[sub_resource type="PlatformData" id="PlatformData_1"]
+script = ExtResource("2_platformdata")
+position = Vector2(100, 550)
+color = Color(0.6, 0.4, 0.2, 1)
+size = Vector2(128, 32)
+
+[sub_resource type="PlatformData" id="PlatformData_2"]
+script = ExtResource("2_platformdata")
+position = Vector2(300, 450)
+color = Color(0.4, 0.8, 0.4, 1)
+size = Vector2(128, 32)
+
+[sub_resource type="PlatformData" id="PlatformData_3"]
+script = ExtResource("2_platformdata")
+position = Vector2(150, 350)
+color = Color(0.4, 0.8, 0.4, 1)
+size = Vector2(128, 32)
+
+[sub_resource type="PlatformData" id="PlatformData_4"]
+script = ExtResource("2_platformdata")
+position = Vector2(500, 300)
+color = Color(0.4, 0.8, 0.4, 1)
+size = Vector2(128, 32)
+
+[sub_resource type="PlatformData" id="PlatformData_5"]
+script = ExtResource("2_platformdata")
+position = Vector2(350, 200)
+color = Color(0.4, 0.8, 0.4, 1)
+size = Vector2(128, 32)
+
+[resource]
+script = ExtResource("1_leveldata")
+level_number = 2
+player_spawn_position = Vector2(100, 500)
+platforms = Array[ExtResource("2_platformdata")]([SubResource("PlatformData_1"), SubResource("PlatformData_2"), SubResource("PlatformData_3"), SubResource("PlatformData_4"), SubResource("PlatformData_5")])
+goal_position = Vector2(650, 150)
