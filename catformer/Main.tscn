@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://b5xqj2p8dak1m"]
 
-[ext_resource type="PackedScene" uid="uid://dp8wqhbj5xg7f" path="res://Player.tscn" id="1_abc123"]
+[ext_resource type="PackedScene" uid="uid://dp8wqhbj5xg7f" path="res://PlayerController.tscn" id="1_abc123"]
 [ext_resource type="Script" path="res://GameManager.gd" id="2_gamemanager"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_platform"]

@@ -78,13 +78,21 @@ static func create_random_level(level_num: int) -> LevelData:
 	start_platform.size = Vector2(128, 32)
 	level.platforms.append(start_platform)
 	
-	# Smart platform generation with rules
+	# Smart platform generation with rules using config system
+	var config = GameConfig.current
 	var current_pos = start_platform.position
-	var platform_count = randi_range(4, 7)
-	var difficulty = min(level_num - 2, 8) / 8.0  # Scale difficulty 0-1 for levels 3+
+	var min_platforms = config.min_platforms_per_level if config else 4
+	var max_platforms = config.max_platforms_per_level if config else 7
+	var max_difficulty = config.max_difficulty_level if config else 10
+	var platform_count = randi_range(min_platforms, max_platforms)
+	var difficulty = min(level_num - 2, max_difficulty) / float(max_difficulty)
 	
 	for i in range(platform_count):
-		var platform_size = Vector2(randi_range(100, 150), 32)
+		var min_width = int(config.platform_size_variance.x) if config else 100
+		var max_width = int(config.platform_size_variance.y) if config else 150
+		var platform_height = config.platform_size.y if config else 32
+		var platform_width = randi_range(min_width, max_width)
+		var platform_size = Vector2(platform_width, platform_height)
 		var next_pos = _generate_reachable_platform_position(current_pos, level.platforms, difficulty, platform_size)
 		
 		var platform = PlatformData.new()
@@ -101,23 +109,24 @@ static func create_random_level(level_num: int) -> LevelData:
 	return level
 
 static func _generate_reachable_platform_position(from_pos: Vector2, existing_platforms: Array, difficulty: float, platform_size: Vector2 = Vector2(128, 32)) -> Vector2:
-	var max_horizontal = 130  # Safe horizontal jump distance
-	var max_vertical_up = 90   # Safe vertical jump up
-	var max_vertical_down = 200 # Can fall further down
+	var config = GameConfig.current
+	var max_horizontal = config.max_horizontal_jump if config else 130.0
+	var max_vertical_up = config.max_vertical_jump_up if config else 90.0
+	var max_vertical_down = config.max_vertical_jump_down if config else 200.0
 	
 	# Increase challenge with difficulty
 	var min_gap = 80 + int(difficulty * 40)  # Minimum gap gets larger
-	var height_variation = 60 + int(difficulty * 80)  # More height variation
+	var height_variation = 60 + int(difficulty * 80.0)  # More height variation
 	
 	var attempts = 0
 	while attempts < 20:  # Prevent infinite loops
 		var horizontal_dir = 1 if randf() > 0.2 else -1  # Mostly go right, sometimes left
-		var horizontal_distance = randi_range(min_gap, max_horizontal)
-		var vertical_distance = randi_range(-max_vertical_up, max_vertical_down)
+		var horizontal_distance = randi_range(min_gap, int(max_horizontal))
+		var vertical_distance = randi_range(int(-max_vertical_up), int(max_vertical_down))
 		
 		# Add some randomness but keep it reachable
 		if difficulty > 0.5:
-			vertical_distance = randi_range(-height_variation, height_variation/2)
+			vertical_distance = randi_range(-height_variation, int(height_variation/2))
 		
 		var next_pos = Vector2(
 			from_pos.x + horizontal_distance * horizontal_dir,
@@ -140,7 +149,7 @@ static func _generate_reachable_platform_position(from_pos: Vector2, existing_pl
 		clamp(from_pos.y + randi_range(-50, 50), 150, 550)
 	)
 
-static func _generate_reachable_goal_position(from_pos: Vector2, existing_platforms: Array) -> Vector2:
+static func _generate_reachable_goal_position(from_pos: Vector2, _existing_platforms: Array) -> Vector2:
 	# Goal should be reachable but not too easy
 	var goal_pos = Vector2(
 		from_pos.x + randi_range(80, 120),
@@ -154,8 +163,9 @@ static func _generate_reachable_goal_position(from_pos: Vector2, existing_platfo
 	return goal_pos
 
 static func _is_position_valid(pos: Vector2, existing_platforms: Array, new_platform_size: Vector2 = Vector2(128, 32)) -> bool:
-	var min_spacing = 80   # Minimum gap between any platforms (no touching!)
-	var min_jump_gap = 140 # Minimum gap needed for jumping between platforms
+	var config = GameConfig.current
+	var min_spacing = config.min_platform_spacing if config else 80.0
+	var min_jump_gap = config.min_jump_gap if config else 140.0
 	
 	for platform in existing_platforms:
 		var platform_size = platform.size if platform is PlatformData else Vector2(128, 32)
@@ -201,11 +211,12 @@ static func _get_rect_vertical_distance(rect1: Rect2, rect2: Rect2) -> float:
 	
 	return max(top_gap, bottom_gap)
 
-static func _creates_horizontal_wall(pos: Vector2, platform_size: Vector2, existing_platforms: Array, min_gap: float) -> bool:
+static func _creates_horizontal_wall(pos: Vector2, platform_size: Vector2, existing_platforms: Array, _min_gap: float) -> bool:
 	# Check if this platform creates a horizontal barrier that blocks vertical movement
+	var config = GameConfig.current
 	var barrier_height_range = 150  # Platforms within this height range can form a barrier
-	var max_barrier_width = 250     # Maximum width of blocking barrier before we need a gap
-	var min_traversal_gap = 140      # Minimum gap needed to jump through/around
+	var max_barrier_width = config.max_barrier_width if config else 250.0
+	var min_traversal_gap = config.min_jump_gap if config else 140.0
 	
 	# Find all platforms that could contribute to a horizontal barrier
 	var nearby_platforms = []
@@ -229,7 +240,7 @@ static func _creates_horizontal_wall(pos: Vector2, platform_size: Vector2, exist
 	nearby_platforms.sort_custom(func(a, b): return a.position.x < b.position.x)
 	
 	# Check if this creates a continuous barrier without adequate gaps
-	var total_coverage = 0
+	var _total_coverage = 0
 	var leftmost_pos = null
 	var rightmost_pos = null
 	var gaps = []
@@ -268,7 +279,8 @@ static func _creates_horizontal_wall(pos: Vector2, platform_size: Vector2, exist
 	return false
 
 static func _creates_vertical_stack(pos: Vector2, platform_size: Vector2, existing_platforms: Array) -> bool:
-	var min_jump_clearance = 120  # Player needs this much vertical space to jump over
+	var config = GameConfig.current
+	var min_jump_clearance = config.min_jump_clearance if config else 120.0
 	var horizontal_overlap_tolerance = 50  # How much horizontal overlap constitutes "stacking"
 	
 	for platform in existing_platforms:
@@ -297,8 +309,9 @@ static func _creates_vertical_stack(pos: Vector2, platform_size: Vector2, existi
 
 static func _maintains_vertical_paths(pos: Vector2, platform_size: Vector2, existing_platforms: Array) -> bool:
 	# Ensure there are always paths for vertical movement
-	var screen_width = 800
-	var path_width = 160  # Minimum width needed for a traversable path
+	var config = GameConfig.current
+	var _screen_width = 800
+	var path_width = config.min_vertical_path_width if config else 160.0
 	var check_height_above = pos.y - 120  # Check area above this platform
 	var check_height_below = pos.y + 120  # Check area below this platform
 	

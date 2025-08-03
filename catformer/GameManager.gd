@@ -8,18 +8,12 @@ func _ready():
 	call_deferred("load_current_level")
 
 func load_current_level():
-	var level_data: LevelData
+	# Use LevelFactory to determine appropriate level type and create level
+	var level_type = LevelFactory.get_level_type_for_number(current_level)
+	var level_data = LevelFactory.create_level(current_level, level_type)
 	
-	match current_level:
-		1:
-			level_data = LevelLoader.create_level_1()
-		2:
-			level_data = LevelLoader.create_level_2()
-		_:
-			# Generate random levels beyond level 2
-			level_data = LevelLoader.create_random_level(current_level)
-	
-	print("Level data created successfully: ", level_data)
+	var difficulty = LevelFactory.get_level_difficulty(level_type, current_level)
+	print("Level ", current_level, " created successfully (Type: ", level_type, ", Difficulty: ", difficulty, ")")
 	
 	var level_scene = get_parent()
 	

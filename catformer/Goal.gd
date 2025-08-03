@@ -8,7 +8,7 @@ func _ready():
 	var color_rect = ColorRect.new()
 	color_rect.size = Vector2(128, 32)
 	color_rect.position = Vector2(-64, -16)
-	color_rect.color = Constants.COLOR_GOAL
+	color_rect.color = GameConfig.current.color_goal if GameConfig.current else Color(1, 0.8, 0, 1)
 	add_child(color_rect)
 	
 	# Create collision shape
@@ -27,3 +27,5 @@ func _on_body_entered(body):
 	if body.name == "Player":
 		print("Player reached goal! Emitting signal...")
 		goal_reached.emit(body)
+		# Also emit through the global event bus
+		GameEventBus.emit_player_reached_goal(body, self)

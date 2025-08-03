@@ -1,0 +1,276 @@
+class_name ObjectPool
+extends RefCounted
+
+# ObjectPool - Generic object pooling system for performance optimization
+# Reduces garbage collection by reusing objects instead of creating/destroying them
+
+signal pool_expanded(new_size: int)
+signal object_retrieved(pool_size: int, active_count: int)
+signal object_returned(pool_size: int, active_count: int)
+
+# Pool configuration
+var pool_name: String
+var initial_size: int = 10
+var max_size: int = 100
+var auto_expand: bool = true
+var preload_scene: PackedScene
+
+# Pool storage
+var available_objects = []
+var active_objects = []
+var total_created: int = 0
+
+# Statistics for debugging
+var peak_active_count: int = 0
+var total_retrievals: int = 0
+var total_returns: int = 0
+var expansions: int = 0
+
+func _init(name: String, scene: PackedScene, initial_pool_size: int = 10, maximum_size: int = 100):
+	pool_name = name
+	preload_scene = scene
+	initial_size = initial_pool_size
+	max_size = maximum_size
+	_initialize_pool()
+
+# Initialize the pool with initial objects
+func _initialize_pool():
+	for i in range(initial_size):
+		var obj = _create_new_object()
+		if obj:
+			available_objects.append(obj)
+			total_created += 1
+	
+	print("ObjectPool [", pool_name, "]: Initialized with ", available_objects.size(), " objects")
+
+# Get an object from the pool
+func get_object():
+	var obj = null
+	
+	# Try to get from available objects
+	if not available_objects.is_empty():
+		obj = available_objects.pop_back()
+	else:
+		# Pool is empty, try to expand if allowed
+		if auto_expand and total_created < max_size:
+			obj = _create_new_object()
+			if obj:
+				total_created += 1
+				expansions += 1
+				pool_expanded.emit(total_created)
+		else:
+			# Cannot expand or reached max size
+			if GameConfig.current and GameConfig.current.enable_debug_logging:
+				print("ObjectPool [", pool_name, "]: Pool exhausted! Active: ", active_objects.size(), ", Max: ", max_size)
+			return null
+	
+	if obj:
+		active_objects.append(obj)
+		total_retrievals += 1
+		
+		# Update peak statistics
+		if active_objects.size() > peak_active_count:
+			peak_active_count = active_objects.size()
+		
+		# Reset object to default state
+		_reset_object(obj)
+		
+		object_retrieved.emit(get_total_pool_size(), active_objects.size())
+		
+		if GameConfig.current and GameConfig.current.enable_debug_logging:
+			print("ObjectPool [", pool_name, "]: Retrieved object. Active: ", active_objects.size(), "/", get_total_pool_size())
+	
+	return obj
+
+# Return an object to the pool
+func return_object(obj):
+	if obj == null:
+		print("ObjectPool [", pool_name, "]: Warning - Attempted to return null object")
+		return false
+	
+	# Check if object is actually from this pool
+	var index = active_objects.find(obj)
+	if index == -1:
+		print("ObjectPool [", pool_name, "]: Warning - Object not found in active objects")
+		return false
+	
+	# Remove from active and add to available
+	active_objects.remove_at(index)
+	available_objects.append(obj)
+	total_returns += 1
+	
+	# Clean up object
+	_deactivate_object(obj)
+	
+	object_returned.emit(get_total_pool_size(), active_objects.size())
+	
+	if GameConfig.current and GameConfig.current.enable_debug_logging:
+		print("ObjectPool [", pool_name, "]: Returned object. Active: ", active_objects.size(), "/", get_total_pool_size())
+	
+	return true
+
+# Return all active objects to the pool
+func return_all_objects():
+	var returned_count = 0
+	
+	# Process in reverse to avoid index issues
+	for i in range(active_objects.size() - 1, -1, -1):
+		var obj = active_objects[i]
+		if return_object(obj):
+			returned_count += 1
+	
+	print("ObjectPool [", pool_name, "]: Returned ", returned_count, " objects to pool")
+	return returned_count
+
+# Expand the pool by adding more objects
+func expand_pool(additional_count: int):
+	var added = 0
+	var target_count = min(additional_count, max_size - total_created)
+	
+	for i in range(target_count):
+		var obj = _create_new_object()
+		if obj:
+			available_objects.append(obj)
+			total_created += 1
+			added += 1
+	
+	if added > 0:
+		expansions += 1
+		pool_expanded.emit(total_created)
+		print("ObjectPool [", pool_name, "]: Expanded by ", added, " objects. Total: ", total_created)
+	
+	return added
+
+# Shrink the pool by removing unused objects
+func shrink_pool(target_size: int):
+	if target_size >= total_created:
+		return 0
+	
+	var to_remove = total_created - target_size
+	var removed = 0
+	
+	# Only remove from available objects (don't touch active ones)
+	while removed < to_remove and not available_objects.is_empty():
+		var obj = available_objects.pop_back()
+		_destroy_object(obj)
+		total_created -= 1
+		removed += 1
+	
+	print("ObjectPool [", pool_name, "]: Shrunk by ", removed, " objects. Total: ", total_created)
+	return removed
+
+# Get pool statistics
+func get_statistics() -> Dictionary:
+	return {
+		"pool_name": pool_name,
+		"total_objects": total_created,
+		"available_objects": available_objects.size(),
+		"active_objects": active_objects.size(),
+		"peak_active": peak_active_count,
+		"total_retrievals": total_retrievals,
+		"total_returns": total_returns,
+		"expansions": expansions,
+		"max_size": max_size,
+		"utilization": float(active_objects.size()) / float(total_created) if total_created > 0 else 0.0
+	}
+
+# Reset pool statistics
+func reset_statistics():
+	peak_active_count = 0
+	total_retrievals = 0
+	total_returns = 0
+	expansions = 0
+
+# Get total pool size
+func get_total_pool_size() -> int:
+	return total_created
+
+# Get active object count
+func get_active_count() -> int:
+	return active_objects.size()
+
+# Get available object count
+func get_available_count() -> int:
+	return available_objects.size()
+
+# Check if pool is at capacity
+func is_at_capacity() -> bool:
+	return total_created >= max_size
+
+# Check if pool needs expansion
+func should_expand() -> bool:
+	return available_objects.is_empty() and not is_at_capacity() and auto_expand
+
+# Clean up the entire pool
+func cleanup():
+	return_all_objects()
+	
+	# Destroy all objects
+	for obj in available_objects:
+		_destroy_object(obj)
+	
+	available_objects.clear()
+	active_objects.clear()
+	total_created = 0
+	
+	print("ObjectPool [", pool_name, "]: Cleaned up all objects")
+
+# Create a new object instance
+func _create_new_object():
+	if not preload_scene:
+		print("ObjectPool [", pool_name, "]: Error - No scene provided for object creation")
+		return null
+	
+	var obj = preload_scene.instantiate()
+	if not obj:
+		print("ObjectPool [", pool_name, "]: Error - Failed to instantiate object from scene")
+		return null
+	
+	# Initialize object for pooling
+	_initialize_object(obj)
+	return obj
+
+# Initialize object when first created
+func _initialize_object(obj):
+	# Add any pool-specific initialization here
+	if obj.has_method("_on_pooled_object_created"):
+		obj._on_pooled_object_created()
+
+# Reset object when retrieved from pool
+func _reset_object(obj):
+	# Reset object to default state
+	if obj.has_method("_on_pooled_object_retrieved"):
+		obj._on_pooled_object_retrieved()
+	else:
+		# Default reset behavior
+		if obj.has_method("reset"):
+			obj.reset()
+
+# Deactivate object when returned to pool
+func _deactivate_object(obj):
+	# Clean up object when returned
+	if obj.has_method("_on_pooled_object_returned"):
+		obj._on_pooled_object_returned()
+	else:
+		# Default deactivation behavior
+		if obj is Node:
+			obj.get_parent()?.remove_child(obj)
+
+# Destroy object when removing from pool permanently
+func _destroy_object(obj):
+	if obj and is_instance_valid(obj):
+		if obj.has_method("_on_pooled_object_destroyed"):
+			obj._on_pooled_object_destroyed()
+		
+		if obj is Node:
+			obj.queue_free()
+
+# Debug print pool status
+func print_status():
+	var stats = get_statistics()
+	print("=== ObjectPool [", pool_name, "] Status ===")
+	print("Total Objects: ", stats.total_objects)
+	print("Active: ", stats.active_objects, " | Available: ", stats.available_objects)
+	print("Peak Active: ", stats.peak_active, " | Utilization: ", "%.1f%%" % (stats.utilization * 100))
+	print("Retrievals: ", stats.total_retrievals, " | Returns: ", stats.total_returns)
+	print("Expansions: ", stats.expansions, " | Max Size: ", stats.max_size)

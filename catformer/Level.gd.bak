@@ -4,10 +4,16 @@ extends Node2D
 var platform_scene = preload("res://Platform.tscn")
 var goal_scene = preload("res://Goal.tscn")
 
+# Platform pooling
+var platform_pool_manager: SimplePlatformPoolManager
+var current_level_platforms: Array = []
+
 signal level_completed
 
 func _ready():
-	pass
+	# Initialize platform pool manager
+	platform_pool_manager = SimplePlatformPoolManager.new()
+	add_child(platform_pool_manager)
 
 func load_level(data: LevelData):
 	if not data:
@@ -38,25 +44,22 @@ func load_level(data: LevelData):
 	GameEventBus.emit_level_loaded(data)
 
 func _create_level_objects(data: LevelData):
-	# Clear existing platforms
-	var platforms_node = $Platforms
-	for child in platforms_node.get_children():
-		child.queue_free()
+	# Clear existing platforms using pool manager
+	_clear_current_platforms()
 	
 	# Clear existing goals
 	var existing_goals = get_children().filter(func(child): return child is Goal)
 	for goal in existing_goals:
 		goal.queue_free()
 	
-	# Create platforms directly
-	for platform_data in data.platforms:
-		var platform = platform_scene.instantiate()
-		platform.global_position = platform_data.position
-		platform.platform_color = platform_data.color
-		platform.platform_size = platform_data.size
-		platforms_node.add_child(platform)
-		
-		# Emit platform creation event
+	# Create platforms using pool manager
+	var platforms_node = $Platforms
+	current_level_platforms = platform_pool_manager.create_level_platforms(data, platforms_node)
+	
+	# Emit platform creation events
+	for i in range(current_level_platforms.size()):
+		var platform = current_level_platforms[i]
+		var platform_data = data.platforms[i]
 		GameEventBus.platform_created.emit(platform, platform_data)
 	
 	var goal = goal_scene.instantiate()
@@ -72,3 +75,20 @@ func _on_goal_reached(_body):
 	level_completed.emit()
 	# Also emit through the global event bus
 	GameEventBus.emit_level_completed(level_data.level_number if level_data else 0)
+
+# Clear current platforms using pool manager
+func _clear_current_platforms():
+	if platform_pool_manager and not current_level_platforms.is_empty():
+		platform_pool_manager.clear_level_platforms(current_level_platforms)
+		current_level_platforms.clear()
+		GameEventBus.platforms_cleared.emit()
+
+# Get pool statistics for debugging
+func get_platform_pool_statistics() -> Dictionary:
+	if platform_pool_manager:
+		return platform_pool_manager.get_all_pool_statistics()
+	return {}
+
+# Clean up when level is destroyed
+func _exit_tree():
+	_clear_current_platforms()

@@ -14,3 +14,8 @@ config/name="catformer"
 run/main_scene="res://Level.tscn"
 config/features=PackedStringArray("4.4", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameEventBus="*res://GameEventBus.gd"
+ConfigManager="*res://ConfigManager.gd"
